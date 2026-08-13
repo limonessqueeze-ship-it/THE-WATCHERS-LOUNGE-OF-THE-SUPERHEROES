@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, FanRank, MCUPhase } from '../types';
-import { supabase, isSupabaseConfigured, fetchProfileFromSupabase, saveProfileToSupabase, ensureUUID } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, fetchUserFromSupabase, saveUserToSupabase, fetchProfileFromSupabase, saveProfileToSupabase, ensureUUID } from '../lib/supabase';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -43,19 +43,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (user) {
       localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(user));
-      if (!user.isGuest && isSupabaseConfigured && user.hasSupabaseAuth !== false) {
+      if (!user.isGuest && isSupabaseConfigured) {
         const validId = ensureUUID(user.id);
-        saveProfileToSupabase({
+        saveUserToSupabase({
           id: validId,
-          username: user.username,
-          agent_handle: user.agentHandle,
-          avatar_url: user.avatarUrl,
-          nexus_points: user.nexusPoints,
-          rank: user.rank,
-          favorite_character: user.favoriteCharacter,
-          favorite_phase: user.favoritePhase,
-          bookmarks: user.bookmarks
-        }, user.hasSupabaseAuth);
+          nombre: user.username,
+          foto_de_perfil: user.avatarUrl,
+          dinero: user.nexusPoints,
+          agent_handle: user.agentHandle
+        });
       }
     } else {
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
@@ -104,29 +100,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const emailName = sessionUser.email?.split('@')[0] || 'Usuario';
     const metadata = sessionUser.user_metadata || {};
 
-    // 1. Try fetching existing row from Supabase 'profiles' table
-    const dbProfile = await fetchProfileFromSupabase(userId);
+    // 1. Try fetching existing row from Supabase 'users' table
+    const dbUser = await fetchUserFromSupabase(userId);
 
-    if (dbProfile) {
+    if (dbUser) {
       return {
         id: userId,
-        username: dbProfile.username || metadata.full_name || emailName,
-        agentHandle: dbProfile.agent_handle || `@${emailName}`,
+        username: dbUser.nombre || metadata.full_name || emailName,
+        agentHandle: dbUser.agent_handle || `@${emailName}`,
         email: sessionUser.email || '',
-        avatarUrl: dbProfile.avatar_url || metadata.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
-        nexusPoints: dbProfile.nexus_points ?? 500,
-        rank: calculateRank(dbProfile.nexus_points ?? 500),
-        favoriteCharacter: dbProfile.favorite_character || 'Loki',
-        favoritePhase: (dbProfile.favorite_phase as MCUPhase) || 'Fase 4',
-        bookmarks: dbProfile.bookmarks || [],
+        avatarUrl: dbUser.foto_de_perfil || metadata.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
+        nexusPoints: dbUser.dinero ?? 500,
+        rank: calculateRank(dbUser.dinero ?? 500),
+        favoriteCharacter: 'Loki',
+        favoritePhase: ('Fase 4' as MCUPhase),
+        bookmarks: [],
         likedTheories: {},
         isGuest: false,
         hasSupabaseAuth: true,
-        createdAt: dbProfile.created_at || sessionUser.created_at || new Date().toISOString()
+        createdAt: dbUser.created_at || sessionUser.created_at || new Date().toISOString()
       };
     }
 
-    // 2. If no row exists, create it in Supabase
+    // 2. If no row exists, create it in Supabase 'users' table
     const newProfile: UserProfile = {
       id: userId,
       username: metadata.full_name || emailName,
@@ -144,17 +140,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: sessionUser.created_at || new Date().toISOString()
     };
 
-    saveProfileToSupabase({
+    saveUserToSupabase({
       id: userId,
-      username: newProfile.username,
-      agent_handle: newProfile.agentHandle,
-      avatar_url: newProfile.avatarUrl,
-      nexus_points: newProfile.nexusPoints,
-      rank: newProfile.rank,
-      favorite_character: newProfile.favoriteCharacter,
-      favorite_phase: newProfile.favoritePhase,
-      bookmarks: newProfile.bookmarks
-    }, true);
+      nombre: newProfile.username,
+      foto_de_perfil: newProfile.avatarUrl,
+      dinero: newProfile.nexusPoints,
+      agent_handle: newProfile.agentHandle
+    });
 
     return newProfile;
   }

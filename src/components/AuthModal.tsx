@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Shield, Zap, Lock, UserCheck, AlertCircle, Upload, Image, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { supabase, isSupabaseConfigured, saveProfileToSupabase, generateUUID } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, saveUserToSupabase, generateUUID } from '../lib/supabase';
 import { checkExplicitName } from '../utils/profanityFilter';
 
 interface AuthModalProps {
@@ -108,17 +108,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           return;
         }
 
-        // 2. Check in Supabase DB if username already exists
+        // 2. Check in Supabase DB if username already exists in 'users' table
         if (isSupabaseConfigured) {
           try {
             const { data: existingUser } = await supabase
-              .from('profiles')
-              .select('id, username')
-              .ilike('username', trimmedUsername)
+              .from('users')
+              .select('id, nombre')
+              .ilike('nombre', trimmedUsername)
               .maybeSingle();
 
             if (existingUser) {
-              setErrorMessage(`El nombre de usuario "${trimmedUsername}" ya existe. Elige un usuario diferente.`);
+              setErrorMessage(`El nombre de usuario "${trimmedUsername}" ya existe en Supabase. Elige un usuario diferente.`);
               setLoading(false);
               return;
             }
@@ -127,36 +127,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           }
         }
 
-        // 3. Create account with Supabase Auth or Local Account fallback
-        let supabaseUserId: string | null = null;
-        if (isSupabaseConfigured) {
-          try {
-            const safePrefix = trimmedUsername.toLowerCase().replace(/[^a-z0-9]/g, '') || 'agent';
-            const internalEmail = `${safePrefix}_${Date.now().toString().slice(-6)}@example.com`;
-            const { data: authData, error: authErr } = await supabase.auth.signUp({
-              email: internalEmail,
-              password: password,
-              options: {
-                data: {
-                  full_name: trimmedUsername,
-                  avatar_url: finalAvatar,
-                  agent_handle: finalHandle
-                }
-              }
-            });
-
-            if (!authErr && authData?.user?.id) {
-              supabaseUserId = authData.user.id;
-            } else if (authErr) {
-              console.warn('Supabase Auth signUp note:', authErr.message);
-            }
-          } catch (e) {
-            console.debug('Supabase Auth signUp fallback to local account:', e);
-          }
-        }
-
-        const hasSupabaseAuth = !!supabaseUserId;
-        const newUserId = supabaseUserId || generateUUID();
+        const newUserId = generateUUID();
         const newProfile = {
           id: newUserId,
           username: trimmedUsername,
@@ -170,7 +141,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           bookmarks: [],
           likedTheories: {},
           isGuest: false,
-          hasSupabaseAuth,
+          hasSupabaseAuth: false,
           createdAt: new Date().toISOString()
         };
 
@@ -183,19 +154,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           agentHandle: finalHandle
         });
 
-        // Save to Supabase DB if configured and user is registered in Supabase Auth
-        if (isSupabaseConfigured && hasSupabaseAuth) {
-          await saveProfileToSupabase({
+        // Save directly to Supabase 'users' table
+        if (isSupabaseConfigured) {
+          await saveUserToSupabase({
             id: newUserId,
-            username: trimmedUsername,
-            agent_handle: finalHandle,
-            avatar_url: finalAvatar,
-            nexus_points: 500,
-            rank: calculateRank(500),
-            favorite_character: 'Loki',
-            favorite_phase: 'Fase 4',
-            bookmarks: []
-          }, true);
+            nombre: trimmedUsername,
+            contrasena: password,
+            foto_de_perfil: finalAvatar,
+            dinero: 500,
+            agent_handle: finalHandle
+          });
         }
 
         // Log user in directly
@@ -228,7 +196,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             bookmarks: [],
             likedTheories: {},
             isGuest: false,
-            hasSupabaseAuth: matchedLocal.id.length === 36 && !matchedLocal.id.startsWith('usr-'),
+            hasSupabaseAuth: false,
             createdAt: new Date().toISOString()
           };
 
@@ -237,38 +205,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           return;
         }
 
-        // If not matched locally, check Supabase DB
+        // If not matched locally, check Supabase DB 'users' table
         if (isSupabaseConfigured) {
-          const { data: dbProfile } = await supabase
-            .from('profiles')
+          const { data: dbUser } = await supabase
+            .from('users')
             .select('*')
-            .ilike('username', trimmedUsername)
+            .ilike('nombre', trimmedUsername)
             .maybeSingle();
 
-          if (dbProfile) {
+          if (dbUser) {
+            if (dbUser.contrasena && dbUser.contrasena !== password) {
+              setErrorMessage('Contraseña incorrecta.');
+              setLoading(false);
+              return;
+            }
+
             const userProfile = {
-              id: dbProfile.id,
-              username: dbProfile.username,
-              agentHandle: dbProfile.agent_handle || `@${dbProfile.username.toLowerCase()}`,
-              email: `${dbProfile.username.toLowerCase()}@example.com`,
-              avatarUrl: dbProfile.avatar_url || defaultAvatar,
-              nexusPoints: dbProfile.nexus_points ?? 500,
-              rank: calculateRank(dbProfile.nexus_points ?? 500),
-              favoriteCharacter: dbProfile.favorite_character || 'Loki',
-              favoritePhase: (dbProfile.favorite_phase as any) || 'Fase 4',
-              bookmarks: dbProfile.bookmarks || [],
+              id: dbUser.id,
+              username: dbUser.nombre,
+              agentHandle: dbUser.agent_handle || `@${dbUser.nombre.toLowerCase()}`,
+              email: `${dbUser.nombre.toLowerCase()}@example.com`,
+              avatarUrl: dbUser.foto_de_perfil || defaultAvatar,
+              nexusPoints: dbUser.dinero ?? 500,
+              rank: calculateRank(dbUser.dinero ?? 500),
+              favoriteCharacter: 'Loki',
+              favoritePhase: 'Fase 4' as any,
+              bookmarks: [],
               likedTheories: {},
               isGuest: false,
-              hasSupabaseAuth: true,
-              createdAt: dbProfile.created_at || new Date().toISOString()
+              hasSupabaseAuth: false,
+              createdAt: dbUser.created_at || new Date().toISOString()
             };
 
             // Save to local cache
             saveLocalAccount({
-              id: dbProfile.id,
-              username: dbProfile.username,
+              id: dbUser.id,
+              username: dbUser.nombre,
               passwordHash: password,
-              avatarUrl: dbProfile.avatar_url || defaultAvatar,
+              avatarUrl: dbUser.foto_de_perfil || defaultAvatar,
               agentHandle: userProfile.agentHandle
             });
 

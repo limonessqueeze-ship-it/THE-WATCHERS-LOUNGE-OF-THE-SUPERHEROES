@@ -15,18 +15,18 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-export interface DbProfile {
+export interface DbUser {
   id: string;
-  username: string;
-  agent_handle: string;
-  avatar_url: string;
-  nexus_points: number;
-  rank: string;
-  favorite_character: string;
-  favorite_phase: string;
-  bookmarks: string[];
+  nombre: string;
+  contrasena?: string;
+  foto_de_perfil: string;
+  dinero: number;
+  agent_handle?: string;
   created_at?: string;
 }
+
+// Deprecated alias for backwards compatibility
+export type DbProfile = DbUser;
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -55,67 +55,80 @@ export function ensureUUID(idString: string): string {
   return `${hex.substring(0, 8)}-${hex.substring(8, 12)}-4${hex.substring(13, 16)}-a${hex.substring(17, 20)}-${hex.substring(20, 32)}`;
 }
 
-export async function fetchProfileFromSupabase(userId: string): Promise<DbProfile | null> {
+export async function fetchUserFromSupabase(identifier: string): Promise<DbUser | null> {
   try {
-    const validId = ensureUUID(userId);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', validId)
-      .maybeSingle();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
+    let query = supabase.from('users').select('*');
+    if (isUuid) {
+      query = query.eq('id', identifier);
+    } else {
+      query = query.ilike('nombre', identifier);
+    }
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
-      console.debug('Supabase fetch profile notice:', error.message);
+      console.debug('Supabase fetch user notice:', error.message);
       return null;
     }
-    return data as DbProfile | null;
+    return data as DbUser | null;
   } catch (err) {
-    console.debug('Error in fetchProfileFromSupabase:', err);
+    console.debug('Error in fetchUserFromSupabase:', err);
     return null;
   }
 }
 
-export async function saveProfileToSupabase(profile: Partial<DbProfile> & { id: string }, hasSupabaseAuth?: boolean) {
+export async function fetchProfileFromSupabase(userId: string): Promise<DbUser | null> {
+  return fetchUserFromSupabase(userId);
+}
+
+export async function saveUserToSupabase(userData: {
+  id: string;
+  nombre: string;
+  contrasena?: string;
+  foto_de_perfil?: string;
+  dinero?: number;
+  agent_handle?: string;
+}) {
   try {
-    // If explicitly marked as local account without Supabase Auth, skip DB sync to avoid FK constraint error
-    if (hasSupabaseAuth === false) {
-      return { data: null, error: null };
-    }
+    const validId = ensureUUID(userData.id);
 
-    const validId = ensureUUID(profile.id);
-
-    const fullPayload: any = {
+    const payload: any = {
       id: validId,
-      username: profile.username || 'Usuario',
-      agent_handle: profile.agent_handle || `@${(profile.username || 'user').toLowerCase()}`,
-      avatar_url: profile.avatar_url || ''
+      nombre: userData.nombre || 'Usuario',
+      foto_de_perfil: userData.foto_de_perfil || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
+      dinero: userData.dinero ?? 500,
+      agent_handle: userData.agent_handle || `@${(userData.nombre || 'user').toLowerCase()}`
     };
 
-    if (profile.nexus_points !== undefined) fullPayload.nexus_points = profile.nexus_points;
-    if (profile.rank !== undefined) fullPayload.rank = profile.rank;
-    if (profile.favorite_character !== undefined) fullPayload.favorite_character = profile.favorite_character;
-    if (profile.favorite_phase !== undefined) fullPayload.favorite_phase = profile.favorite_phase;
-    if (profile.bookmarks !== undefined) fullPayload.bookmarks = profile.bookmarks;
+    if (userData.contrasena) {
+      payload.contrasena = userData.contrasena;
+    }
 
     const { data, error } = await supabase
-      .from('profiles')
-      .upsert(fullPayload, { onConflict: 'id' });
+      .from('users')
+      .upsert(payload, { onConflict: 'id' });
 
     if (error) {
-      if (error.code === '23503' || error.message?.includes('violates foreign key constraint') || error.message?.includes('profiles_id_fkey')) {
-        console.debug('Profile ID does not exist in auth.users (local profile):', validId);
-      } else {
-        console.warn('Supabase save profile notice:', error.message);
-      }
+      console.warn('Supabase save user notice:', error.message);
     } else {
-      console.log('Saved profile to Supabase successfully:', validId);
+      console.log('Saved user to Supabase users table:', validId);
     }
 
     return { data, error };
   } catch (err) {
-    console.debug('Error in saveProfileToSupabase:', err);
+    console.debug('Error in saveUserToSupabase:', err);
     return { data: null, error: err };
   }
+}
+
+export async function saveProfileToSupabase(profile: any, _hasSupabaseAuth?: boolean) {
+  return saveUserToSupabase({
+    id: profile.id,
+    nombre: profile.username || profile.nombre || 'Usuario',
+    foto_de_perfil: profile.avatar_url || profile.foto_de_perfil,
+    dinero: profile.nexus_points ?? profile.dinero ?? 500,
+    agent_handle: profile.agent_handle
+  });
 }
 
 export interface DbForumMessage {
