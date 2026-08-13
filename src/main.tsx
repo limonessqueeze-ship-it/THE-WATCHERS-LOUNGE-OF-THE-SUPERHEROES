@@ -2,6 +2,13 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { clearAllLocalAccounts } from './utils/profanityFilter.ts';
+
+// Auto-purge previously created local accounts once
+if (typeof window !== 'undefined' && !localStorage.getItem('mcu_accounts_purged_v1')) {
+  clearAllLocalAccounts();
+  localStorage.setItem('mcu_accounts_purged_v1', 'true');
+}
 
 // Suppress benign Vite WebSocket connection warnings/unhandled rejections
 if (typeof window !== 'undefined') {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Shield, Zap, Lock, UserCheck, AlertCircle, Upload, Image, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured, saveProfileToSupabase, generateUUID } from '../lib/supabase';
+import { checkExplicitName } from '../utils/profanityFilter';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -71,6 +72,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
       setErrorMessage('Ingresa un nombre de usuario válido.');
+      setLoading(false);
+      return;
+    }
+
+    // Check for explicit or offensive language in username
+    const explicitCheck = checkExplicitName(trimmedUsername);
+    if (explicitCheck.isExplicit) {
+      setErrorMessage(explicitCheck.reason || 'El nombre ingresado contiene palabras o lenguaje no permitido.');
       setLoading(false);
       return;
     }

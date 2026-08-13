@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Shield, Zap, Award, Edit3, Bookmark, Star, Check, UserCheck, Sparkles, AlertTriangle, Upload, Image as ImageIcon } from 'lucide-react';
+import { Shield, Zap, Award, Edit3, Bookmark, Star, Check, UserCheck, Sparkles, AlertTriangle, Upload, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Theory, MCUPhase, FanRank } from '../types';
+import { checkExplicitName } from '../utils/profanityFilter';
 
 interface UserProfileProps {
   theories: Theory[];
@@ -64,8 +65,24 @@ export const UserProfile: React.FC<UserProfileProps> = ({ theories, onSelectTheo
     Math.round((user.nexusPoints / nextRankInfo.minPts) * 100)
   );
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+
+    const checkUser = checkExplicitName(username);
+    if (checkUser.isExplicit) {
+      setErrorMessage(checkUser.reason || 'El nombre de usuario contiene palabras explícitas no permitidas.');
+      return;
+    }
+
+    const checkHandle = checkExplicitName(agentHandle);
+    if (checkHandle.isExplicit) {
+      setErrorMessage(checkHandle.reason || 'El handle contiene palabras explícitas no permitidas.');
+      return;
+    }
+
     updateProfile({
       username,
       agentHandle,
@@ -150,6 +167,13 @@ export const UserProfile: React.FC<UserProfileProps> = ({ theories, onSelectTheo
           <h3 className="font-cinzel text-xl font-bold text-amber-200 flex items-center gap-2">
             <UserCheck className="w-5 h-5 text-amber-400" /> Personalizar Perfil de Agente
           </h3>
+
+          {errorMessage && (
+            <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-500/60 text-red-200 text-xs font-semibold flex items-center gap-2 animate-shake">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSaveProfile} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

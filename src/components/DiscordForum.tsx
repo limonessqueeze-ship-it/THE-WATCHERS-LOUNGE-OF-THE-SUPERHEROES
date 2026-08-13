@@ -26,6 +26,7 @@ import {
   updateForumMessageReactionsInSupabase,
   DbForumMessage 
 } from '../lib/supabase';
+import { checkExplicitName } from '../utils/profanityFilter';
 
 export interface ForumMessage {
   id: string;
@@ -292,15 +293,24 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
 
   const currentMessages = channelMessages[activeChannel] || [];
 
+  const [forumError, setForumError] = useState<string | null>(null);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
+    setForumError(null);
     if (!inputText.trim() && !imageUrlInput.trim()) return;
+
+    const content = inputText.trim();
+    const checkContent = checkExplicitName(content);
+    if (checkContent.isExplicit) {
+      setForumError('⚠️ Mensaje bloqueado por la TVA: Contiene lenguaje explícito o palabras no permitidas.');
+      return;
+    }
 
     const msgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const authorName = user?.username || 'Agente Multiversal';
     const authorHandle = user?.agentHandle || '@agente_tva';
     const avatarUrl = user?.avatarUrl || '';
-    const content = inputText.trim();
     const imageUrl = imageUrlInput.trim() || undefined;
     const reactions = { '❤️': 1 };
 
@@ -667,6 +677,19 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
           {/* INPUT FORM (Discord Mobile Style) */}
           <div className="p-2.5 sm:p-4 bg-[#0c0406] border-t border-[#220708] space-y-2">
             
+            {forumError && (
+              <div className="p-2.5 rounded-xl bg-red-950/90 border border-red-600/70 text-red-200 text-xs font-semibold flex items-center justify-between animate-fade-in">
+                <span>{forumError}</span>
+                <button 
+                  type="button" 
+                  onClick={() => setForumError(null)} 
+                  className="text-slate-400 hover:text-white ml-2 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
             {/* Hidden native file input for picking images from phone/device gallery */}
             <input 
               type="file" 
