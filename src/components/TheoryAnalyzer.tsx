@@ -14,6 +14,7 @@ import {
 import { Theory, MCUPhase, TheoryCategory } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { checkExplicitName } from '../utils/profanityFilter';
+import { saveTeoriaToSupabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface TheoryAnalyzerProps {
   onPublishTheory: (theory: Theory) => void;
@@ -106,6 +107,21 @@ export const TheoryAnalyzer: React.FC<TheoryAnalyzerProps> = ({ onPublishTheory 
 
     onPublishTheory(newTheory);
     updateNexusPoints(25);
+
+    // Save theory to Supabase 'teorias' table
+    if (isSupabaseConfigured) {
+      saveTeoriaToSupabase({
+        id: newTheory.id,
+        titulo: newTheory.title,
+        categoria: newTheory.category,
+        fase: newTheory.phase,
+        resumen: newTheory.premise,
+        desarrollo: newTheory.fullContent,
+        imagen: newTheory.imageUrl || '',
+        autor: newTheory.authorName
+      });
+    }
+
     setPublished(true);
 
     setTimeout(() => {

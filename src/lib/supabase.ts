@@ -204,5 +204,63 @@ export async function updateForumMessageReactionsInSupabase(messageId: string, r
   }
 }
 
+export interface DbTeoria {
+  id: string;
+  titulo: string;
+  categoria: string;
+  fase: string;
+  resumen: string;
+  desarrollo?: string;
+  imagen?: string;
+  autor: string;
+  created_at?: string;
+}
+
+export async function fetchTeoriasFromSupabase(): Promise<DbTeoria[]> {
+  try {
+    const { data, error } = await supabase
+      .from('teorias')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.debug('Supabase fetch teorias notice:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.debug('Error fetching teorias from Supabase:', err);
+    return [];
+  }
+}
+
+export async function saveTeoriaToSupabase(teoria: DbTeoria) {
+  try {
+    const payload = {
+      id: teoria.id,
+      titulo: teoria.titulo,
+      categoria: teoria.categoria || 'Películas',
+      fase: teoria.fase || 'Fase 6',
+      resumen: teoria.resumen || '',
+      desarrollo: teoria.desarrollo || '',
+      imagen: teoria.imagen || '',
+      autor: teoria.autor || 'Agente de la TVA',
+      created_at: teoria.created_at || new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('teorias')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (error) {
+      console.warn('Supabase save teoria notice:', error.message);
+    } else {
+      console.log('Saved teoria to Supabase teorias table:', teoria.id);
+    }
+  } catch (err) {
+    console.debug('Error in saveTeoriaToSupabase:', err);
+  }
+}
+
 
 

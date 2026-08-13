@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Lightbulb, PlusCircle, Filter, TrendingUp, CheckCircle2, XCircle, Shield, Coins, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Theory } from '../types';
+import { fetchTeoriasFromSupabase, isSupabaseConfigured } from '../lib/supabase';
 
 export interface TheoryBetCard {
   id: string;
@@ -77,6 +78,35 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
   const [betNotification, setBetNotification] = useState<string | null>(null);
 
   const categories = ['Todas', 'Spider-Man: Brand New Day', 'Secret Wars', 'Doomsday', 'X-Men', 'Películas', 'Series Disney+'];
+
+  // Fetch theories from Supabase DB on mount
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      fetchTeoriasFromSupabase().then(dbList => {
+        if (dbList && dbList.length > 0) {
+          const mappedCards: TheoryBetCard[] = dbList.map(item => ({
+            id: item.id,
+            category: item.categoria || 'Películas',
+            title: item.titulo,
+            evidence: [item.resumen, item.desarrollo].filter(Boolean) as string[],
+            imageUrl: item.imagen || undefined,
+            totalPoolMN: 500,
+            yesPercent: 75,
+            noPercent: 25,
+            yesMultiplier: 1.33,
+            noMultiplier: 4.0
+          }));
+
+          // Merge with default initial cards so users see both
+          setTheories(prev => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newCards = mappedCards.filter(m => !existingIds.has(m.id));
+            return [...newCards, ...prev];
+          });
+        }
+      });
+    }
+  }, []);
 
   // Save to local storage
   useEffect(() => {
