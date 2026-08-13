@@ -204,6 +204,40 @@ export async function updateForumMessageReactionsInSupabase(messageId: string, r
   }
 }
 
+export async function fetchAllUsersFromSupabase(): Promise<DbUser[]> {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .order('nombre', { ascending: true });
+
+    if (error) {
+      console.debug('Supabase fetch all users notice:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.debug('Error fetching all users from Supabase:', err);
+    return [];
+  }
+}
+
+export async function transferMoneyInSupabase(senderId: string, recipientId: string, amount: number) {
+  try {
+    const recipient = await fetchUserFromSupabase(recipientId);
+    if (recipient) {
+      const newRecipientMoney = (recipient.dinero ?? 500) + amount;
+      await supabase
+        .from('users')
+        .update({ dinero: newRecipientMoney })
+        .eq('id', recipient.id);
+      console.log(`Transferred ${amount} to user ${recipientId}. New balance: ${newRecipientMoney}`);
+    }
+  } catch (err) {
+    console.error('Error in transferMoneyInSupabase:', err);
+  }
+}
+
 export interface DbTeoria {
   id: string;
   titulo: string;

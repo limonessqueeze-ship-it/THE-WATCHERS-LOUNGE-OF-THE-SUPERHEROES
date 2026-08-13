@@ -11,6 +11,8 @@ import { RankingBoard } from './components/RankingBoard';
 import { LoreChatbot } from './components/LoreChatbot';
 import { TheoryAnalyzer } from './components/TheoryAnalyzer';
 import { DiscordForum } from './components/DiscordForum';
+import { UserProfile } from './components/UserProfile';
+import { MoneyModal } from './components/MoneyModal';
 import { Bot, Sparkles, X } from 'lucide-react';
 
 function AppContent() {
@@ -19,6 +21,7 @@ function AppContent() {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isLoreChatbotOpen, setIsLoreChatbotOpen] = useState(false);
   const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
+  const [isMoneyModalOpen, setIsMoneyModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [userBalance, setUserBalance] = useState(500);
 
@@ -40,9 +43,18 @@ function AppContent() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenMoney={() => setIsMoneyModalOpen(true)}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         userBalance={userBalance}
+      />
+
+      {/* Money & Transfer Modal */}
+      <MoneyModal
+        isOpen={isMoneyModalOpen}
+        onClose={() => setIsMoneyModalOpen(false)}
+        userBalance={userBalance}
+        setUserBalance={setUserBalance}
       />
 
       {/* Auth Modal */}
@@ -130,6 +142,14 @@ function AppContent() {
           <RankingBoard
             onOpenAuth={() => setIsAuthOpen(true)}
             userBalance={userBalance}
+          />
+        )}
+
+        {activeTab === 'profile' && (
+          <UserProfile
+            theories={[]}
+            onSelectTheory={() => {}}
+            onOpenMoney={() => setIsMoneyModalOpen(true)}
           />
         )}
       </main>

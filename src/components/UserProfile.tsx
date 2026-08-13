@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, Zap, Award, Edit3, Bookmark, Star, Check, UserCheck, Sparkles, AlertTriangle, Upload, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { Shield, Zap, Award, Edit3, Bookmark, Star, Check, UserCheck, Sparkles, AlertTriangle, Upload, Image as ImageIcon, AlertCircle, Coins, Send } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { Theory, MCUPhase, FanRank } from '../types';
 import { checkExplicitName } from '../utils/profanityFilter';
@@ -7,9 +7,10 @@ import { checkExplicitName } from '../utils/profanityFilter';
 interface UserProfileProps {
   theories: Theory[];
   onSelectTheory: (theory: Theory) => void;
+  onOpenMoney?: () => void;
 }
 
-export const UserProfile: React.FC<UserProfileProps> = ({ theories, onSelectTheory }) => {
+export const UserProfile: React.FC<UserProfileProps> = ({ theories, onSelectTheory, onOpenMoney }) => {
   const { user, updateProfile, calculateRank } = useAuth();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -159,6 +160,34 @@ export const UserProfile: React.FC<UserProfileProps> = ({ theories, onSelectTheo
           </div>
 
         </div>
+      </div>
+
+      {/* Dinero & Transferencias Card */}
+      <div className="tva-card rounded-2xl p-6 border border-amber-500/40 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-[#18080a] via-[#0d0607] to-[#18080a]">
+        <div className="flex items-center gap-4 text-center sm:text-left">
+          <div className="w-14 h-14 rounded-2xl bg-[#D4AF37]/10 border border-[#D4AF37]/50 flex items-center justify-center shrink-0">
+            <Coins className="w-7 h-7 text-[#D4AF37]" />
+          </div>
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-bold block">
+              TU DINERO DISPONIBLE
+            </span>
+            <div className="font-cinzel text-3xl font-black text-[#D4AF37]">
+              {user.nexusPoints.toLocaleString()} <span className="text-base font-mono text-amber-200">MN</span>
+            </div>
+            <p className="text-xs text-slate-400 font-mono">Monedas Nexus para casino, votaciones y transferencias</p>
+          </div>
+        </div>
+
+        {onOpenMoney && (
+          <button
+            onClick={onOpenMoney}
+            className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-[#DC2626] to-amber-600 hover:from-red-600 hover:to-amber-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-red-950/60 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            <span>Transferir Dinero</span>
+          </button>
+        )}
       </div>
 
       {/* Editing Form Drawer */}

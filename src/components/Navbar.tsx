@@ -3,12 +3,13 @@ import { Tv, Film, Lightbulb, Dices, Trophy, Search, User, LogOut, Coins, Messag
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 
-export type TabType = 'series' | 'movies' | 'theories' | 'casino' | 'ranking' | 'forum';
+export type TabType = 'series' | 'movies' | 'theories' | 'casino' | 'ranking' | 'forum' | 'profile';
 
 interface NavbarProps {
   activeTab: TabType;
   setActiveTab: (tab: TabType) => void;
   onOpenAuth: () => void;
+  onOpenMoney?: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   userBalance?: number;
@@ -18,9 +19,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
   onOpenAuth,
+  onOpenMoney,
   searchQuery,
   setSearchQuery,
-  userBalance = 475
+  userBalance = 500
 }) => {
   const { user, logout } = useAuth();
   const { language, toggleLanguage, t } = useLanguage();
@@ -32,6 +34,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     { id: 'forum' as TabType, label: t('nav.forum'), icon: MessageSquare },
     { id: 'casino' as TabType, label: t('nav.casino'), icon: Dices },
     { id: 'ranking' as TabType, label: t('nav.ranking'), icon: Trophy },
+    { id: 'profile' as TabType, label: 'Perfil', icon: User },
   ];
 
   return (
@@ -110,14 +113,27 @@ export const Navbar: React.FC<NavbarProps> = ({
             {/* User Info or Acceder Button */}
             {user ? (
               <div className="flex items-center gap-2.5">
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#16080a] border border-[#D4AF37]/40 text-xs font-mono">
-                  <Coins className="w-3.5 h-3.5 text-[#D4AF37]" />
-                  <span className="text-[#D4AF37] font-bold">{user.nexusPoints || userBalance} MN</span>
-                </div>
+                <button
+                  onClick={onOpenMoney}
+                  className="hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#16080a] border border-[#D4AF37]/60 text-xs font-mono hover:bg-amber-950/40 hover:border-amber-400 transition-all cursor-pointer shadow-sm active:scale-95"
+                  title="Ver Mi Dinero y Transferir Monedas"
+                >
+                  <Coins className="w-3.5 h-3.5 text-[#D4AF37] animate-pulse" />
+                  <span className="text-[#D4AF37] font-bold">{user.nexusPoints ?? userBalance} MN</span>
+                </button>
 
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#140608] border border-slate-800 text-xs font-medium text-slate-200">
+                <button
+                  onClick={() => setActiveTab('profile')}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium transition-all cursor-pointer ${
+                    activeTab === 'profile'
+                      ? 'bg-[#DC2626] border-amber-400 text-white shadow-md'
+                      : 'bg-[#140608] border-slate-800 text-slate-200 hover:border-amber-500/50'
+                  }`}
+                  title="Ver Perfil"
+                >
+                  <User className="w-3.5 h-3.5 text-amber-400" />
                   <span className="font-bold text-amber-200">{user.username}</span>
-                </div>
+                </button>
 
                 <button
                   onClick={logout}
