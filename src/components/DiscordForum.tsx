@@ -18,6 +18,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { 
+  supabase, 
+  isSupabaseConfigured, 
+  fetchForumMessagesFromSupabase, 
+  saveForumMessageToSupabase, 
+  updateForumMessageReactionsInSupabase,
+  DbForumMessage 
+} from '../lib/supabase';
 
 export interface ForumMessage {
   id: string;
@@ -181,6 +189,103 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
     }
   }, [channelMessages]);
 
+  // Sync forum messages with Supabase (initial load + real-time updates)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    fetchForumMessagesFromSupabase().then(dbMsgs => {
+      if (dbMsgs && dbMsgs.length > 0) {
+        setChannelMessages(prev => {
+          const updated = { ...prev };
+          dbMsgs.forEach(dbMsg => {
+            const ch = dbMsg.channel || 'general';
+            if (!updated[ch]) updated[ch] = [];
+
+            const existingIdx = updated[ch].findIndex(m => m.id === dbMsg.id);
+            const formatted: ForumMessage = {
+              id: dbMsg.id,
+              channel: ch,
+              authorName: dbMsg.author_name || 'Agente Multiversal',
+              authorHandle: dbMsg.author_handle || '@agente_tva',
+              avatarUrl: dbMsg.avatar_url,
+              content: dbMsg.content || '',
+              imageUrl: dbMsg.image_url,
+              timestamp: dbMsg.created_at
+                ? new Date(dbMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                : 'Reciente',
+              reactions: dbMsg.reactions || {},
+              userReactions: existingIdx !== -1 ? updated[ch][existingIdx].userReactions : {}
+            };
+
+            if (existingIdx !== -1) {
+              updated[ch][existingIdx] = {
+                ...updated[ch][existingIdx],
+                ...formatted,
+                userReactions: updated[ch][existingIdx].userReactions
+              };
+            } else {
+              updated[ch].push(formatted);
+            }
+          });
+          return updated;
+        });
+      }
+    });
+
+    const channel = supabase
+      .channel('public:forum_messages')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'forum_messages' },
+        (payload) => {
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const dbMsg = payload.new as DbForumMessage;
+            const ch = dbMsg.channel || 'general';
+            setChannelMessages(prev => {
+              const list = prev[ch] || [];
+              const existingIdx = list.findIndex(m => m.id === dbMsg.id);
+              const formatted: ForumMessage = {
+                id: dbMsg.id,
+                channel: ch,
+                authorName: dbMsg.author_name || 'Agente Multiversal',
+                authorHandle: dbMsg.author_handle || '@agente_tva',
+                avatarUrl: dbMsg.avatar_url,
+                content: dbMsg.content || '',
+                imageUrl: dbMsg.image_url,
+                timestamp: dbMsg.created_at
+                  ? new Date(dbMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : 'Ahora mismo',
+                reactions: dbMsg.reactions || {},
+                userReactions: existingIdx !== -1 ? list[existingIdx].userReactions : {}
+              };
+
+              let newList: ForumMessage[];
+              if (existingIdx !== -1) {
+                newList = [...list];
+                newList[existingIdx] = {
+                  ...newList[existingIdx],
+                  ...formatted,
+                  userReactions: newList[existingIdx].userReactions
+                };
+              } else {
+                newList = [...list, formatted];
+              }
+
+              return {
+                ...prev,
+                [ch]: newList
+              };
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeChannel, channelMessages]);
@@ -191,21 +296,44 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
     e.preventDefault();
     if (!inputText.trim() && !imageUrlInput.trim()) return;
 
+    const msgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const authorName = user?.username || 'Agente Multiversal';
+    const authorHandle = user?.agentHandle || '@agente_tva';
+    const avatarUrl = user?.avatarUrl || '';
+    const content = inputText.trim();
+    const imageUrl = imageUrlInput.trim() || undefined;
+    const reactions = { '❤️': 1 };
+
     const newMessage: ForumMessage = {
-      id: `msg-${Date.now()}`,
+      id: msgId,
       channel: activeChannel,
-      authorName: user?.username || 'Agente Multiversal',
-      authorHandle: user?.agentHandle || '@agente_tva',
-      content: inputText.trim(),
-      imageUrl: imageUrlInput.trim() || undefined,
+      authorName,
+      authorHandle,
+      avatarUrl,
+      content,
+      imageUrl,
       timestamp: 'Ahora mismo',
-      reactions: { '❤️': 1 }
+      reactions
     };
 
     setChannelMessages(prev => ({
       ...prev,
       [activeChannel]: [...(prev[activeChannel] || []), newMessage]
     }));
+
+    if (isSupabaseConfigured) {
+      saveForumMessageToSupabase({
+        id: msgId,
+        channel: activeChannel,
+        author_name: authorName,
+        author_handle: authorHandle,
+        author_id: user?.id,
+        avatar_url: avatarUrl,
+        content,
+        image_url: imageUrl || '',
+        reactions
+      });
+    }
 
     setInputText('');
     setImageUrlInput('');
@@ -215,6 +343,8 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
   const handleAddReaction = (messageId: string, emoji: string) => {
     setChannelMessages(prev => {
       const list = prev[activeChannel] || [];
+      let updatedReactionsForDb: Record<string, number> | null = null;
+
       const updated = list.map(msg => {
         if (msg.id !== messageId) return msg;
 
@@ -222,6 +352,7 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
         const currentCnt = Number(msg.reactions[emoji]) || 0;
         const newCount = currentCnt + (userReacted ? -1 : 1);
         const newReactions = { ...msg.reactions, [emoji]: Math.max(0, newCount) };
+        updatedReactionsForDb = newReactions;
 
         return {
           ...msg,
@@ -233,12 +364,17 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
         };
       });
 
+      if (updatedReactionsForDb && isSupabaseConfigured) {
+        updateForumMessageReactionsInSupabase(messageId, updatedReactionsForDb);
+      }
+
       return {
         ...prev,
         [activeChannel]: updated
       };
     });
   };
+
 
   const currentChannelObj = channels.find(c => c.id === activeChannel)!;
 

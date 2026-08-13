@@ -118,4 +118,78 @@ export async function saveProfileToSupabase(profile: Partial<DbProfile> & { id: 
   }
 }
 
+export interface DbForumMessage {
+  id: string;
+  channel: string;
+  author_name: string;
+  author_handle: string;
+  author_id?: string;
+  avatar_url?: string;
+  content: string;
+  image_url?: string;
+  reactions: Record<string, number>;
+  created_at?: string;
+}
+
+export async function fetchForumMessagesFromSupabase(): Promise<DbForumMessage[]> {
+  try {
+    const { data, error } = await supabase
+      .from('forum_messages')
+      .select('*')
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.debug('Supabase fetch forum messages notice:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.debug('Error fetching forum messages from Supabase:', err);
+    return [];
+  }
+}
+
+export async function saveForumMessageToSupabase(msg: DbForumMessage) {
+  try {
+    const payload = {
+      id: msg.id,
+      channel: msg.channel,
+      author_name: msg.author_name,
+      author_handle: msg.author_handle,
+      author_id: msg.author_id || null,
+      avatar_url: msg.avatar_url || '',
+      content: msg.content || '',
+      image_url: msg.image_url || '',
+      reactions: msg.reactions || {},
+      created_at: msg.created_at || new Date().toISOString()
+    };
+
+    const { error } = await supabase
+      .from('forum_messages')
+      .upsert(payload, { onConflict: 'id' });
+
+    if (error) {
+      console.warn('Supabase save forum message notice:', error.message);
+    }
+  } catch (err) {
+    console.debug('Error in saveForumMessageToSupabase:', err);
+  }
+}
+
+export async function updateForumMessageReactionsInSupabase(messageId: string, reactions: Record<string, number>) {
+  try {
+    const { error } = await supabase
+      .from('forum_messages')
+      .update({ reactions })
+      .eq('id', messageId);
+
+    if (error) {
+      console.warn('Supabase update forum reactions notice:', error.message);
+    }
+  } catch (err) {
+    console.debug('Error in updateForumMessageReactionsInSupabase:', err);
+  }
+}
+
+
 
