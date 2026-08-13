@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
-import { Lightbulb, PlusCircle, Filter, TrendingUp, CheckCircle2, XCircle, Shield, Coins, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lightbulb, PlusCircle, Filter, TrendingUp, CheckCircle2, XCircle, Shield, Coins, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { Theory } from '../types';
 
 export interface TheoryBetCard {
   id: string;
   category: string;
   title: string;
   evidence: string[];
+  imageUrl?: string;
   totalPoolMN: number;
   yesPercent: number;
   noPercent: number;
@@ -14,7 +16,38 @@ export interface TheoryBetCard {
   noMultiplier: number;
 }
 
-export const INITIAL_BETTING_THEORIES: TheoryBetCard[] = [];
+export const INITIAL_BETTING_THEORIES: TheoryBetCard[] = [
+  {
+    id: 'th-default-1',
+    category: 'Spider-Man: Brand New Day',
+    title: 'Spider-Man se unirá a los Vengadores Secretos contra Doctor Doom',
+    evidence: [
+      'Peter Parker perdió la memoria de todos pero mantiene la araña dorada.',
+      'Doctor Doom tomará el control de la Sombra de Latveria en la Fase 6.'
+    ],
+    imageUrl: 'https://images.unsplash.com/photo-1635805737707-575885ab0820?q=80&w=800&auto=format&fit=crop',
+    totalPoolMN: 1250,
+    yesPercent: 78,
+    noPercent: 22,
+    yesMultiplier: 1.28,
+    noMultiplier: 4.55
+  },
+  {
+    id: 'th-default-2',
+    category: 'Doomsday',
+    title: 'Victor Von Doom destruirá el Telar del Tiempo creado por Loki',
+    evidence: [
+      'Loki mantiene el multiverso sujeto como el Dios de las Historias.',
+      'La incursión final unirá las líneas temporales en Battleworld.'
+    ],
+    imageUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800&auto=format&fit=crop',
+    totalPoolMN: 2100,
+    yesPercent: 64,
+    noPercent: 36,
+    yesMultiplier: 1.56,
+    noMultiplier: 2.77
+  }
+];
 
 interface TheoriesArenaProps {
   searchQuery: string;
@@ -31,10 +64,56 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
 }) => {
   const [selectedBetAmount, setSelectedBetAmount] = useState<number>(50);
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
-  const [theories, setTheories] = useState<TheoryBetCard[]>(INITIAL_BETTING_THEORIES);
+  const [theories, setTheories] = useState<TheoryBetCard[]>(() => {
+    try {
+      const saved = localStorage.getItem('mcu_theories_arena_list');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Could not load saved theories', e);
+    }
+    return INITIAL_BETTING_THEORIES;
+  });
+
   const [betNotification, setBetNotification] = useState<string | null>(null);
 
-  const categories = ['Todas', 'Spider-Man: Brand New Day', 'Secret Wars', 'Doomsday', 'X-Men', 'Vision Quest'];
+  const categories = ['Todas', 'Spider-Man: Brand New Day', 'Secret Wars', 'Doomsday', 'X-Men', 'Películas', 'Series Disney+'];
+
+  // Save to local storage
+  useEffect(() => {
+    try {
+      localStorage.setItem('mcu_theories_arena_list', JSON.stringify(theories));
+    } catch (e) {
+      console.warn('Could not save theories', e);
+    }
+  }, [theories]);
+
+  // Listen for newly published theories
+  useEffect(() => {
+    const handleNewTheory = (e: any) => {
+      const detail: Theory = e.detail;
+      if (!detail) return;
+
+      const newBetCard: TheoryBetCard = {
+        id: detail.id,
+        category: detail.category || 'Películas',
+        title: detail.title,
+        evidence: [detail.premise, detail.fullContent].filter(Boolean),
+        imageUrl: detail.imageUrl,
+        totalPoolMN: 500,
+        yesPercent: detail.nexusProbability || 75,
+        noPercent: 100 - (detail.nexusProbability || 75),
+        yesMultiplier: Number((100 / (detail.nexusProbability || 75)).toFixed(2)),
+        noMultiplier: Number((100 / (100 - (detail.nexusProbability || 75))).toFixed(2))
+      };
+
+      setTheories(prev => [newBetCard, ...prev]);
+      setBetNotification(`🎉 ¡Nueva Teoría "${detail.title.slice(0, 30)}..." publicada con éxito! (+25 MN)`);
+      setTimeout(() => setBetNotification(null), 4000);
+    };
+
+    window.addEventListener('new_theory_published', handleNewTheory);
+    return () => window.removeEventListener('new_theory_published', handleNewTheory);
+  }, []);
 
   const handlePlaceBet = (theoryId: string, choice: 'yes' | 'no') => {
     if (userBalance < selectedBetAmount) {
@@ -48,7 +127,6 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
     setTheories(prev => prev.map(item => {
       if (item.id === theoryId) {
         const newPool = item.totalPoolMN + selectedBetAmount;
-        // recalculate slight percent shift
         const yesShift = choice === 'yes' ? 0.8 : -0.8;
         const newYes = Math.min(95, Math.max(5, Number((item.yesPercent + yesShift).toFixed(1))));
         const newNo = Number((100 - newYes).toFixed(1));
@@ -100,7 +178,7 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
                 Arena de Votación y <span className="text-[#DC2626]">Predicciones de Teorías</span>
               </h1>
               <p className="text-xs sm:text-sm text-slate-300 max-w-2xl mt-1.5 leading-relaxed">
-                Vota SÍ CREO o NO CREO apostando tus Monedas Nexus. ¡A menor porcentaje de la opción, mayor es la ganancia por multiplicador!
+                Vota SÍ CREO o NO CREO apostando tus Monedas Nexus. Publica tus teorías adjuntando fotos e imágenes directo desde tu galería.
               </p>
             </div>
 
@@ -162,10 +240,10 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
             <Lightbulb className="w-7 h-7" />
           </div>
           <h2 className="font-cinzel text-xl font-bold text-white">
-            No hay teorías registradas
+            No hay teorías en esta categoría
           </h2>
           <p className="text-xs text-slate-300 leading-relaxed max-w-md mx-auto font-mono">
-            Se han eliminado todas las teorías existentes por solicitud del usuario. ¡Sé el primero en forjar y publicar una nueva teoría con la IA!
+            ¡Sé el primero en crear y publicar una teoría con imágenes adjuntas desde la biblioteca de tu dispositivo!
           </p>
           <div className="pt-2">
             <button
@@ -180,92 +258,103 @@ export const TheoriesArena: React.FC<TheoriesArenaProps> = ({
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {filteredTheories.map((item) => (
-          <div key={item.id} className="tva-card rounded-3xl p-6 space-y-5 flex flex-col justify-between">
-            
-            {/* Card Header */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="px-3 py-1 rounded-full bg-red-950/80 border border-red-800/60 text-red-400 text-xs font-mono font-bold uppercase tracking-wider">
-                  {item.category}
-                </span>
-                <span className="text-xs font-mono font-bold text-amber-400 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-500/30">
-                  💰 Bolsa Total: {item.totalPoolMN.toLocaleString()} MN
-                </span>
-              </div>
-
-              <h3 className="font-cinzel text-lg font-bold text-white leading-snug">
-                {item.title}
-              </h3>
-
-              {/* Evidence Section */}
-              <div className="bg-[#080304] p-3.5 rounded-xl border border-[#250809] space-y-1.5 text-xs">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
-                  EVIDENCIAS EN LA SERIE / MCU:
-                </span>
-                <ul className="space-y-1 text-slate-300 list-disc list-inside">
-                  {item.evidence.map((ev, i) => (
-                    <li key={i}>{ev}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* Betting Bar & Controls */}
-            <div className="space-y-3 pt-3 border-t border-[#250809]">
-              <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-                <span>Cuotas de Apuesta en Vivo:</span>
-                <span className="text-amber-300 font-bold">Apostando: {selectedBetAmount} MN</span>
-              </div>
-
-              {/* Dual Progress Bar */}
-              <div className="h-3 rounded-full bg-slate-900 overflow-hidden flex border border-slate-800">
-                <div
-                  style={{ width: `${item.yesPercent}%` }}
-                  className="bg-emerald-500 h-full transition-all duration-500"
-                />
-                <div
-                  style={{ width: `${item.noPercent}%` }}
-                  className="bg-red-600 h-full transition-all duration-500"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handlePlaceBet(item.id, 'yes')}
-                  className="py-3 px-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 hover:bg-emerald-900/80 text-emerald-300 font-bold text-xs font-mono flex items-center justify-between transition-all active:scale-95"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>SÍ CREO: {item.yesPercent}%</span>
-                  </div>
-                  <span className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-black">
-                    {item.yesMultiplier}x
+            <div key={item.id} className="tva-card rounded-3xl p-6 space-y-5 flex flex-col justify-between overflow-hidden relative">
+              
+              {/* Card Header & Content */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="px-3 py-1 rounded-full bg-red-950/80 border border-red-800/60 text-red-400 text-xs font-mono font-bold uppercase tracking-wider">
+                    {item.category}
                   </span>
-                </button>
-
-                <button
-                  onClick={() => handlePlaceBet(item.id, 'no')}
-                  className="py-3 px-4 rounded-2xl bg-red-950/60 border border-red-500/50 hover:bg-red-900/80 text-red-300 font-bold text-xs font-mono flex items-center justify-between transition-all active:scale-95"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <XCircle className="w-4 h-4 text-red-400" />
-                    <span>NO CREO: {item.noPercent}%</span>
-                  </div>
-                  <span className="bg-red-500/20 px-2 py-0.5 rounded text-[10px] font-black">
-                    {item.noMultiplier}x
+                  <span className="text-xs font-mono font-bold text-amber-400 bg-amber-950/30 px-3 py-1 rounded-full border border-amber-500/30">
+                    💰 Bolsa Total: {item.totalPoolMN.toLocaleString()} MN
                   </span>
-                </button>
+                </div>
+
+                <h3 className="font-cinzel text-lg font-bold text-white leading-snug">
+                  {item.title}
+                </h3>
+
+                {/* Attached Image from Gallery if present */}
+                {item.imageUrl && (
+                  <div className="rounded-2xl overflow-hidden border border-[#2d0a0a] max-h-56 bg-black">
+                    <img
+                      src={item.imageUrl}
+                      alt={item.title}
+                      className="w-full h-48 object-cover hover:scale-105 transition-transform duration-300"
+                    />
+                  </div>
+                )}
+
+                {/* Evidence / Premise Section */}
+                <div className="bg-[#080304] p-3.5 rounded-xl border border-[#250809] space-y-1.5 text-xs">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold block">
+                    DETALLES Y EVIDENCIAS:
+                  </span>
+                  <ul className="space-y-1 text-slate-300 list-disc list-inside">
+                    {item.evidence.map((ev, i) => (
+                      <li key={i}>{ev}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
 
-              <p className="text-[10px] text-amber-400/80 font-mono text-center">
-                ✨ Ganancia Mayor: Opción de menor porcentaje paga hasta {Math.max(item.yesMultiplier, item.noMultiplier)}x
-              </p>
-            </div>
+              {/* Betting Bar & Controls */}
+              <div className="space-y-3 pt-3 border-t border-[#250809]">
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400">
+                  <span>Cuotas de Apuesta en Vivo:</span>
+                  <span className="text-amber-300 font-bold">Apostando: {selectedBetAmount} MN</span>
+                </div>
 
-          </div>
-        ))}
-      </div>
+                {/* Dual Progress Bar */}
+                <div className="h-3 rounded-full bg-slate-900 overflow-hidden flex border border-slate-800">
+                  <div
+                    style={{ width: `${item.yesPercent}%` }}
+                    className="bg-emerald-500 h-full transition-all duration-500"
+                  />
+                  <div
+                    style={{ width: `${item.noPercent}%` }}
+                    className="bg-red-600 h-full transition-all duration-500"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handlePlaceBet(item.id, 'yes')}
+                    className="py-3 px-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 hover:bg-emerald-900/80 text-emerald-300 font-bold text-xs font-mono flex items-center justify-between transition-all active:scale-95"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>SÍ CREO: {item.yesPercent}%</span>
+                    </div>
+                    <span className="bg-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-black">
+                      {item.yesMultiplier}x
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handlePlaceBet(item.id, 'no')}
+                    className="py-3 px-4 rounded-2xl bg-red-950/60 border border-red-500/50 hover:bg-red-900/80 text-red-300 font-bold text-xs font-mono flex items-center justify-between transition-all active:scale-95"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <XCircle className="w-4 h-4 text-red-400" />
+                      <span>NO CREO: {item.noPercent}%</span>
+                    </div>
+                    <span className="bg-red-500/20 px-2 py-0.5 rounded text-[10px] font-black">
+                      {item.noMultiplier}x
+                    </span>
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-amber-400/80 font-mono text-center">
+                  ✨ Ganancia Mayor: Opción de menor porcentaje paga hasta {Math.max(item.yesMultiplier, item.noMultiplier)}x
+                </p>
+              </div>
+
+            </div>
+          ))}
+        </div>
       )}
 
     </div>

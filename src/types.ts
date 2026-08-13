@@ -52,6 +52,7 @@ export interface Theory {
   createdAt: string;
   character?: string;
   artifact?: string;
+  imageUrl?: string;
   isAiGenerated?: boolean;
   isNexusEvent?: boolean;
   comments?: Comment[];

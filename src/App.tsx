@@ -67,14 +67,14 @@ function AppContent() {
         </div>
       )}
 
-      {/* Theory Generator Modal */}
+      {/* Theory Creation Modal */}
       {isGeneratorOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-[#0d0607] border border-[#D4AF37]/40 p-4 sm:p-6 relative shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[#2d0a0a] pb-3">
               <h2 className="font-cinzel text-lg font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-amber-400" />
-                <span>Forjar Teoría con Inteligencia Artificial</span>
+                <span>Publicar Nueva Teoría</span>
               </h2>
               <button
                 onClick={() => setIsGeneratorOpen(false)}
@@ -84,7 +84,9 @@ function AppContent() {
               </button>
             </div>
             <TheoryAnalyzer
-              onPublishTheory={() => {
+              onPublishTheory={(newTheory) => {
+                // Publish theory callback
+                window.dispatchEvent(new CustomEvent('new_theory_published', { detail: newTheory }));
                 setIsGeneratorOpen(false);
                 setActiveTab('theories');
               }}

@@ -1,7 +1,19 @@
-import React, { useState } from 'react';
-import { Zap, Sparkles, Shield, AlertTriangle, Send, Share2, Check, RefreshCw, Layers } from 'lucide-react';
-import { Theory, MCUPhase } from '../types';
+import React, { useState, useRef } from 'react';
+import { 
+  Upload, 
+  Image as ImageIcon, 
+  X, 
+  Check, 
+  Sparkles, 
+  Shield, 
+  PlusCircle, 
+  Link as LinkIcon, 
+  FileText,
+  CheckCircle2
+} from 'lucide-react';
+import { Theory, MCUPhase, TheoryCategory } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { checkExplicitName } from '../utils/profanityFilter';
 
 interface TheoryAnalyzerProps {
   onPublishTheory: (theory: Theory) => void;
@@ -9,280 +21,304 @@ interface TheoryAnalyzerProps {
 
 export const TheoryAnalyzer: React.FC<TheoryAnalyzerProps> = ({ onPublishTheory }) => {
   const { user, updateNexusPoints } = useAuth();
-  const [character, setCharacter] = useState('');
-  const [artifact, setArtifact] = useState('');
-  const [scenario, setScenario] = useState('');
-  const [phase, setPhase] = useState<MCUPhase>('Fase 6');
   
-  const [loading, setLoading] = useState(false);
-  const [generatedTheory, setGeneratedTheory] = useState<Theory | null>(null);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState<TheoryCategory>('Películas');
+  const [phase, setPhase] = useState<MCUPhase>('Fase 6');
+  const [premise, setPremise] = useState('');
+  const [fullContent, setFullContent] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [urlInput, setUrlInput] = useState('');
+  const [showUrlField, setShowUrlField] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
 
-  const presets = [
-    { char: 'Doctor Strange', art: 'El Cero Absoluto', phase: 'Fase 6' as MCUPhase },
-    { char: 'Loki God of Stories', art: 'El Ojo de Agamotto', phase: 'Fase 5' as MCUPhase },
-    { char: 'Scarlet Witch', art: 'El Telar del Tiempo', phase: 'Fase 6' as MCUPhase },
-    { char: 'Deadpool & Wolverine', art: 'La Silla de Tiempo de Mobius', phase: 'Fase 5' as MCUPhase }
-  ];
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleGenerate = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!character.trim() && !artifact.trim()) return;
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setLoading(true);
-    setPublished(false);
-    setGeneratedTheory(null);
-
-    try {
-      const res = await fetch('/api/gemini/theory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ character, artifact, scenario, phase })
-      });
-
-      const data = await res.json();
-
-      const newTheory: Theory = {
-        id: 'theory-ai-' + Date.now(),
-        title: data.title || `Teoría Multiversal de ${character} y ${artifact}`,
-        premise: data.premise || 'Una teoría generada por el Motor Multiversal de la TVA.',
-        fullContent: data.fullContent || 'Contenido detallado de la teoría...',
-        authorName: user?.username || 'Agente de la TVA',
-        authorHandle: user?.agentHandle || '@agente_tva',
-        authorAvatar: user?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
-        phase: phase,
-        category: 'Películas',
-        tags: data.tags || [character, artifact, 'IA Generated', phase],
-        nexusProbability: data.nexusProbability ?? 85,
-        nexusRisk: data.nexusRisk || 'Crítico / Colapso Temporal',
-        nexusPoints: 1,
-        commentsCount: 0,
-        createdAt: new Date().toISOString(),
-        character,
-        artifact,
-        isAiGenerated: true,
-        isNexusEvent: data.isNexusEvent ?? true
-      };
-
-      setGeneratedTheory(newTheory);
-
-    } catch (err) {
-      console.error("Error generando teoría:", err);
-    } finally {
-      setLoading(false);
+    if (file.size > 8 * 1024 * 1024) {
+      setErrorMessage('La imagen sobrepasa los 8MB. Elige otra foto de tu biblioteca.');
+      return;
     }
+
+    setErrorMessage(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setImageUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  const handlePublish = () => {
-    if (!generatedTheory) return;
-    onPublishTheory(generatedTheory);
+  const handleAddUrlImage = () => {
+    if (!urlInput.trim()) return;
+    setImageUrl(urlInput.trim());
+    setUrlInput('');
+    setShowUrlField(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+
+    if (!title.trim()) {
+      setErrorMessage('Escribe un título para tu teoría.');
+      return;
+    }
+
+    if (!premise.trim()) {
+      setErrorMessage('Escribe una premisa o resumen para tu teoría.');
+      return;
+    }
+
+    // Profanity filter check
+    const filterCheck = checkExplicitName(`${title} ${premise} ${fullContent}`);
+    if (filterCheck.isExplicit) {
+      setErrorMessage('⚠️ Tu teoría contiene vocabulario explícito o restringido.');
+      return;
+    }
+
+    const newTheory: Theory = {
+      id: 'theory-user-' + Date.now(),
+      title: title.trim(),
+      premise: premise.trim(),
+      fullContent: fullContent.trim() || premise.trim(),
+      authorName: user?.username || 'Agente de la TVA',
+      authorHandle: user?.agentHandle || '@agente_tva',
+      authorAvatar: user?.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=200&auto=format&fit=crop',
+      phase: phase,
+      category: category,
+      tags: [category, phase, 'Comunidad'],
+      nexusProbability: Math.floor(Math.random() * 30) + 65,
+      nexusRisk: 'Moderado',
+      nexusPoints: 1,
+      commentsCount: 0,
+      createdAt: new Date().toISOString(),
+      imageUrl: imageUrl || undefined,
+      isAiGenerated: false,
+      isNexusEvent: false
+    };
+
+    onPublishTheory(newTheory);
+    updateNexusPoints(25);
     setPublished(true);
-    updateNexusPoints(25); // Reward user with +25 Nexus points
+
+    setTimeout(() => {
+      setPublished(false);
+    }, 3000);
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6 space-y-8">
+    <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
       
       {/* Title Header */}
-      <div className="text-center space-y-3">
+      <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-950/80 border border-red-500/40 text-amber-300 text-xs font-mono font-bold uppercase tracking-wider">
-          <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> GENERADOR DE TEORÍAS CON IA GEMINI
+          <PlusCircle className="w-3.5 h-3.5 text-amber-400" /> PUBLICAR EN LA ARENA DE TEORÍAS
         </div>
-        <h1 className="font-cinzel text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-amber-400 to-red-500">
-          FORJA UNA TEORÍA MULTIVERSAL
+        <h1 className="font-cinzel text-2xl sm:text-3xl font-bold text-white">
+          CREA Y COMPARTE TU TEORÍA
         </h1>
-        <p className="text-sm text-slate-400 max-w-xl mx-auto">
-          Combina un personaje con un artefacto o elemento del MCU. El Motor Multiversal analizará las probabilidades canon y redactará una hipótesis cinemática completa.
+        <p className="text-xs sm:text-sm text-slate-300 max-w-lg mx-auto">
+          Escribe tu hipótesis del MCU y adjunta imágenes directo desde la galería de tu dispositivo o un enlace.
         </p>
       </div>
 
-      {/* Input Form */}
-      <div className="tva-card rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
-        
-        {/* Quick Preset Selector */}
-        <div>
-          <label className="block text-xs font-mono uppercase tracking-wider text-amber-400/90 mb-2 font-bold">
-            ⚡ Combinaciones Populares Rápidas:
-          </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {presets.map((p, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  setCharacter(p.char);
-                  setArtifact(p.art);
-                  setPhase(p.phase);
-                }}
-                className="p-2.5 rounded-xl bg-slate-900/90 border border-amber-500/20 hover:border-amber-400 text-left text-xs transition-all flex items-center justify-between group"
-              >
-                <span className="text-slate-200 group-hover:text-amber-200 font-medium">
-                  {p.char} + {p.art}
-                </span>
-                <span className="text-[10px] text-amber-500 font-mono">{p.phase}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <form onSubmit={handleGenerate} className="space-y-4 pt-2 border-t border-slate-800">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Personaje del MCU / Cómics
-              </label>
-              <input
-                type="text"
-                required
-                value={character}
-                onChange={e => setCharacter(e.target.value)}
-                placeholder="Ej. Doctor Strange, Wanda, Victor Von Doom"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-amber-500 transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Artefacto, Objeto o Evento
-              </label>
-              <input
-                type="text"
-                required
-                value={artifact}
-                onChange={e => setArtifact(e.target.value)}
-                placeholder="Ej. El Ojo de Agamotto, Darkhold, Incursión"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-amber-500 transition-colors"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Premisa Adicional u Holo-Escenario (Opcional)
-              </label>
-              <input
-                type="text"
-                value={scenario}
-                onChange={e => setScenario(e.target.value)}
-                placeholder="Ej. ¿Qué ocurriría si intentan reescribir la caída de Sokovia?"
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-amber-500 transition-colors"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Fase MCU Target</label>
-              <select
-                value={phase}
-                onChange={e => setPhase(e.target.value as MCUPhase)}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-100 focus:outline-none focus:border-amber-500 transition-colors"
-              >
-                <option value="Fase 4">Fase 4</option>
-                <option value="Fase 5">Fase 5</option>
-                <option value="Fase 6">Fase 6</option>
-                <option value="Multiverse Saga">Multiverse Saga</option>
-              </select>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || (!character.trim() && !artifact.trim())}
-            className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-red-600 via-amber-600 to-amber-500 text-white font-bold text-sm shadow-xl shadow-red-950/50 hover:brightness-110 active:scale-98 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <RefreshCw className="w-5 h-5 animate-spin text-amber-300" />
-                <span>Calculando Variación de la Línea Temporal...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5 text-amber-300" />
-                <span>Generar Teoría con IA (+25 Pts)</span>
-              </>
-            )}
-          </button>
-        </form>
-
-      </div>
-
-      {/* Generated Theory Card Preview */}
-      {generatedTheory && (
-        <div className="tva-card rounded-2xl p-6 sm:p-8 space-y-6 border-amber-500/50 animate-fadeIn relative overflow-hidden">
-          <div className="absolute top-0 right-0 px-4 py-1.5 rounded-bl-xl bg-gradient-to-l from-red-600 to-amber-600 text-white font-mono text-[11px] font-bold uppercase tracking-wider flex items-center gap-1">
-            <Zap className="w-3.5 h-3.5 fill-white" /> TEORÍA GENERADA POR GEMINI
-          </div>
-
-          <div className="space-y-2">
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
-              {generatedTheory.phase} • {generatedTheory.category}
-            </span>
-            <h2 className="font-cinzel text-2xl font-bold text-amber-100">
-              {generatedTheory.title}
-            </h2>
-            <p className="text-sm font-medium text-amber-300/90 italic bg-amber-950/30 p-3 rounded-xl border border-amber-500/20">
-              "{generatedTheory.premise}"
-            </p>
-          </div>
-
-          {/* Metrics bar */}
-          <div className="flex flex-wrap items-center gap-4 p-3 rounded-xl bg-slate-900/80 border border-slate-800 text-xs font-mono">
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">Riesgo Nexus:</span>
-              <span className="px-2 py-0.5 rounded bg-red-950 text-red-300 font-bold border border-red-500/40">
-                {generatedTheory.nexusRisk}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-slate-400">Probabilidad:</span>
-              <span className="text-amber-400 font-bold">{generatedTheory.nexusProbability}%</span>
-            </div>
-          </div>
-
-          {/* Full content */}
-          <div className="text-sm text-slate-300 space-y-3 leading-relaxed whitespace-pre-line border-t border-slate-800 pt-4">
-            {generatedTheory.fullContent}
-          </div>
-
-          {/* Tags */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {generatedTheory.tags.map((tag, i) => (
-              <span key={i} className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-xs text-amber-300/80">
-                #{tag}
-              </span>
-            ))}
-          </div>
-
-          {/* Action buttons */}
-          <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-            <p className="text-xs text-slate-400">
-              {published ? '✅ ¡Teoría publicada en el Feed principal!' : 'Publica esta teoría para que la comunidad vote y comente.'}
-            </p>
-            <button
-              onClick={handlePublish}
-              disabled={published}
-              className={`px-5 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all ${
-                published
-                  ? 'bg-emerald-950 border border-emerald-500 text-emerald-300 cursor-default'
-                  : 'bg-gradient-to-r from-red-600 to-amber-600 text-white hover:brightness-110 shadow-lg'
-              }`}
-            >
-              {published ? (
-                <>
-                  <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Publicada (+25 Pts Ganados)</span>
-                </>
-              ) : (
-                <>
-                  <Share2 className="w-4 h-4" />
-                  <span>Publicar en el Feed de Teorías</span>
-                </>
-              )}
-            </button>
-          </div>
-
+      {errorMessage && (
+        <div className="p-3 rounded-xl bg-red-950/80 border border-red-600 text-red-200 text-xs font-mono">
+          {errorMessage}
         </div>
       )}
+
+      {/* Main Form Card */}
+      <form onSubmit={handleSubmit} className="tva-card rounded-2xl p-6 space-y-5 shadow-2xl">
+        
+        {/* Title input */}
+        <div>
+          <label className="block text-xs font-mono uppercase tracking-wider text-amber-400 font-bold mb-1.5">
+            1. Título de la Teoría *
+          </label>
+          <input
+            type="text"
+            required
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Ej. Doctor Strange creó el Telar del Tiempo en el Vacío"
+            className="w-full px-4 py-2.5 rounded-xl bg-[#090304] border border-[#2d0a0a] text-sm text-white focus:outline-none focus:border-[#DC2626] transition-colors"
+          />
+        </div>
+
+        {/* Category & Phase select row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-mono uppercase tracking-wider text-slate-300 font-bold mb-1.5">
+              Categoría
+            </label>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value as TheoryCategory)}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#090304] border border-[#2d0a0a] text-sm text-white focus:outline-none focus:border-[#DC2626] transition-colors"
+            >
+              <option value="Películas">Películas</option>
+              <option value="Series Disney+">Series Disney+</option>
+              <option value="Cómics">Cómics</option>
+              <option value="Especulación Salvaje">Especulación Salvaje</option>
+              <option value="Canon Confirmado">Canon Confirmado</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-mono uppercase tracking-wider text-slate-300 font-bold mb-1.5">
+              Fase del MCU Target
+            </label>
+            <select
+              value={phase}
+              onChange={e => setPhase(e.target.value as MCUPhase)}
+              className="w-full px-4 py-2.5 rounded-xl bg-[#090304] border border-[#2d0a0a] text-sm text-white focus:outline-none focus:border-[#DC2626] transition-colors"
+            >
+              <option value="Fase 4">Fase 4</option>
+              <option value="Fase 5">Fase 5</option>
+              <option value="Fase 6">Fase 6</option>
+              <option value="Multiverse Saga">Multiverse Saga</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Premise / Short description */}
+        <div>
+          <label className="block text-xs font-mono uppercase tracking-wider text-amber-400 font-bold mb-1.5">
+            2. Resumen / Premisa Principal *
+          </label>
+          <input
+            type="text"
+            required
+            value={premise}
+            onChange={e => setPremise(e.target.value)}
+            placeholder="Resumen rápido de 1 o 2 oraciones..."
+            className="w-full px-4 py-2.5 rounded-xl bg-[#090304] border border-[#2d0a0a] text-sm text-white focus:outline-none focus:border-[#DC2626] transition-colors"
+          />
+        </div>
+
+        {/* Full content / Evidences */}
+        <div>
+          <label className="block text-xs font-mono uppercase tracking-wider text-slate-300 font-bold mb-1.5">
+            3. Desarrollo Completo y Evidencias (Opcional)
+          </label>
+          <textarea
+            rows={4}
+            value={fullContent}
+            onChange={e => setFullContent(e.target.value)}
+            placeholder="Explica los detalles, escenas de las películas, cómics o pistas que apoyan tu teoría..."
+            className="w-full px-4 py-2.5 rounded-xl bg-[#090304] border border-[#2d0a0a] text-sm text-white focus:outline-none focus:border-[#DC2626] transition-colors resize-none"
+          />
+        </div>
+
+        {/* IMAGE ATTACHMENT SECTION FROM GALLERY / FILES */}
+        <div className="pt-3 border-t border-[#2d0a0a] space-y-3">
+          <label className="block text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">
+            🖼️ Adjuntar Imagen o Evidencia Visual (De tu Biblioteca)
+          </label>
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageFileChange}
+            accept="image/*"
+            className="hidden"
+          />
+
+          {/* If Image is attached, show preview */}
+          {imageUrl ? (
+            <div className="relative rounded-2xl overflow-hidden border border-amber-500/50 bg-[#060203] p-2 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 overflow-hidden">
+                <img
+                  src={imageUrl}
+                  alt="Previsualización"
+                  className="w-20 h-20 rounded-xl object-cover border border-amber-500/30 flex-shrink-0"
+                />
+                <div className="text-xs space-y-1">
+                  <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Imagen Adjuntada
+                  </span>
+                  <p className="text-slate-400 text-[11px] font-mono">Lista para incluirse en tu teoría.</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setImageUrl('')}
+                className="p-2 rounded-xl bg-red-950 text-red-400 hover:bg-red-900 border border-red-700 transition-colors flex-shrink-0"
+                title="Eliminar imagen"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                
+                {/* File picker button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="py-3 px-4 rounded-xl bg-[#18090b] border-2 border-dashed border-[#DC2626]/60 hover:border-[#DC2626] hover:bg-[#200b0e] text-amber-200 font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg"
+                >
+                  <Upload className="w-4 h-4 text-[#DC2626]" />
+                  <span>Subir Foto de tu Galería</span>
+                </button>
+
+                {/* URL button */}
+                <button
+                  type="button"
+                  onClick={() => setShowUrlField(!showUrlField)}
+                  className="py-3 px-4 rounded-xl bg-[#120708] border border-[#2d0a0a] hover:border-slate-700 text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                >
+                  <LinkIcon className="w-4 h-4 text-amber-400" />
+                  <span>Pegar Enlace URL</span>
+                </button>
+
+              </div>
+
+              {showUrlField && (
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    placeholder="https://ejemplo.com/imagen.jpg"
+                    className="flex-1 px-3 py-2 rounded-xl bg-[#090304] border border-[#2d0a0a] text-xs text-white focus:outline-none focus:border-[#DC2626]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddUrlImage}
+                    className="px-4 py-2 bg-[#DC2626] text-white rounded-xl text-xs font-bold hover:bg-red-700"
+                  >
+                    Cargar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Submit Button */}
+        <div className="pt-4 border-t border-[#2d0a0a]">
+          <button
+            type="submit"
+            className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-[#DC2626] via-red-600 to-amber-600 hover:from-red-600 hover:to-amber-500 text-white font-bold text-sm shadow-xl shadow-red-950/60 active:scale-98 transition-all flex items-center justify-center gap-2 uppercase tracking-wider"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Publicar Teoría en la Arena (+25 Pts)</span>
+          </button>
+        </div>
+
+      </form>
 
     </div>
   );
