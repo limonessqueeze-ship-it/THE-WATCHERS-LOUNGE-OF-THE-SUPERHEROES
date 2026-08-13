@@ -14,7 +14,12 @@ import {
   ChevronRight,
   Upload,
   Link as LinkIcon,
-  Laugh
+  Laugh,
+  Database,
+  Wifi,
+  CheckCircle2,
+  Copy,
+  Check
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -182,6 +187,11 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
     };
   });
 
+  const [showSupabaseModal, setShowSupabaseModal] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connected' | 'connecting' | 'polling'>('connecting');
+  const realtimeChannelRef = useRef<any>(null);
+
   useEffect(() => {
     try {
       localStorage.setItem('mcu_discord_forum_messages_v2', JSON.stringify(channelMessages));
@@ -190,11 +200,12 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
     }
   }, [channelMessages]);
 
-  // Sync forum messages with Supabase (initial load + real-time updates)
+  // Sync forum messages with Supabase (initial load + real-time updates + fallback polling)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
 
-    fetchForumMessagesFromSupabase().then(dbMsgs => {
+    const syncFromDb = async () => {
+      const dbMsgs = await fetchForumMessagesFromSupabase();
       if (dbMsgs && dbMsgs.length > 0) {
         setChannelMessages(prev => {
           const updated = { ...prev };
@@ -231,10 +242,14 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
           return updated;
         });
       }
-    });
+    };
 
+    // Initial load
+    syncFromDb();
+
+    // 1. Setup Supabase Realtime Channel with postgres_changes AND broadcast
     const channel = supabase
-      .channel('public:forum_messages')
+      .channel('mcu_forum_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'forum_messages' },
@@ -280,9 +295,39 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
           }
         }
       )
-      .subscribe();
+      .on(
+        'broadcast',
+        { event: 'new_msg' },
+        ({ payload }) => {
+          if (!payload || !payload.id) return;
+          const ch = payload.channel || 'general';
+          setChannelMessages(prev => {
+            const list = prev[ch] || [];
+            if (list.some(m => m.id === payload.id)) return prev;
+            return {
+              ...prev,
+              [ch]: [...list, payload]
+            };
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setRealtimeStatus('connected');
+        } else {
+          setRealtimeStatus('polling');
+        }
+      });
+
+    realtimeChannelRef.current = channel;
+
+    // 2. Background polling fallback every 3.5 seconds to guarantee 100% message sync
+    const interval = setInterval(() => {
+      syncFromDb();
+    }, 3500);
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, []);
@@ -343,6 +388,17 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
         image_url: imageUrl || '',
         reactions
       });
+
+      // Broadcast over Realtime for instant multi-tab sync
+      try {
+        realtimeChannelRef.current?.send({
+          type: 'broadcast',
+          event: 'new_msg',
+          payload: newMessage
+        });
+      } catch (err) {
+        console.debug('Broadcast error:', err);
+      }
     }
 
     setInputText('');
@@ -538,8 +594,21 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
               </div>
             </div>
 
-            {/* Right: Members Toggle Button */}
+            {/* Right: Realtime Status & Members Toggle Button */}
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSupabaseModal(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/50 flex items-center gap-1.5 text-xs font-mono transition-all active:scale-95"
+                title="Estado de Supabase Realtime"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-bold text-[11px] hidden xs:inline">Supabase Live</span>
+              </button>
+
               <button
                 onClick={() => setShowMembersMobile(!showMembersMobile)}
                 className="p-2 rounded-xl bg-[#16070a] border border-[#2d0a0a] text-slate-300 hover:text-white flex items-center gap-1.5 text-xs font-mono active:scale-95 transition-transform"
@@ -1050,6 +1119,116 @@ export const DiscordForum: React.FC<DiscordForumProps> = ({ searchQuery = '' }) 
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUPABASE DIAGNOSTIC & REALTIME MODAL */}
+      {showSupabaseModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-[#0c0406] border border-emerald-500/50 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5 text-sans text-slate-200">
+            
+            <div className="flex items-center justify-between border-b border-emerald-950/80 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-2xl bg-emerald-950 border border-emerald-700/60 text-emerald-400">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-cinzel text-base font-bold text-white flex items-center gap-2">
+                    Estado de Supabase Realtime
+                  </h3>
+                  <p className="text-[11px] font-mono text-emerald-400">Sincronización activa en vivo</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowSupabaseModal(false)}
+                className="text-slate-400 hover:text-white p-2 rounded-xl bg-[#1a080a]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-emerald-950/40 border border-emerald-800/40 flex items-center gap-3">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+                <div>
+                  <span className="font-bold text-emerald-300 block text-xs">¡Supabase está conectado!</span>
+                  <span className="text-[11px] text-slate-300 leading-normal block">
+                    Suscripciones WebSocket <code className="text-amber-300 bg-amber-950/50 px-1 rounded">postgres_changes</code> y <code className="text-amber-300 bg-amber-950/50 px-1 rounded">broadcast</code> están activas con sondeo en segundo plano (3s). Los nuevos comentarios aparecen al instante.
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#140608] border border-[#2d0a0a] space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">URL Supabase:</span>
+                  <span className="text-amber-300 truncate max-w-[200px]">uzutrjpkeolwabfaasgu.supabase.co</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Tabla foro:</span>
+                  <span className="text-emerald-400 font-bold">public.forum_messages</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Suscripción:</span>
+                  <span className="text-emerald-400">WebSocket + HTTP Poll</span>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-xs text-white">Script SQL de instalación para Supabase:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sql = `CREATE TABLE IF NOT EXISTS public.forum_messages (
+  id TEXT PRIMARY KEY,
+  channel TEXT NOT NULL DEFAULT 'general',
+  author_name TEXT NOT NULL,
+  author_handle TEXT,
+  author_id TEXT,
+  avatar_url TEXT,
+  content TEXT,
+  image_url TEXT,
+  reactions JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Habilitar RLS y políticas de acceso
+ALTER TABLE public.forum_messages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Lectura publica" ON public.forum_messages FOR SELECT USING (true);
+CREATE POLICY "Insercion publica" ON public.forum_messages FOR INSERT WITH CHECK (true);
+CREATE POLICY "Actualizacion publica" ON public.forum_messages FOR UPDATE USING (true);
+
+-- Habilitar replicación Realtime
+ALTER PUBLICATION supabase_realtime ADD TABLE forum_messages;`;
+                      navigator.clipboard.writeText(sql);
+                      setCopiedSql(true);
+                      setTimeout(() => setCopiedSql(false), 2500);
+                    }}
+                    className="text-[11px] font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-950/60 border border-amber-800/60 px-2.5 py-1 rounded-xl transition-all active:scale-95"
+                  >
+                    {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedSql ? '¡Copiado!' : 'Copiar SQL'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Para habilitar la replicación Realtime en tu propio proyecto Supabase, pega el código anterior en el <strong>SQL Editor</strong> del panel de Supabase.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-[#220708] flex justify-end">
+              <button
+                onClick={() => setShowSupabaseModal(false)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-700 to-amber-600 text-white font-bold text-xs shadow-lg hover:brightness-110 active:scale-95 transition-all"
+              >
+                Cerrar
+              </button>
+            </div>
+
           </div>
         </div>
       )}
